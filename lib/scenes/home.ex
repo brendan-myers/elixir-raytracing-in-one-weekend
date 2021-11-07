@@ -13,7 +13,7 @@ defmodule Raytracer.Scene.Home do
     # a transparent full-screen rectangle to catch user input
     {:ok, %ViewPort.Status{size: {width, height}}} = ViewPort.info(opts[:viewport])
 
-    pixel_n = 100 # number of pixels horizontally
+    pixel_n = 50 # number of pixels horizontally
 
     aspect_ratio = 1 #16.0 / 9.0
 
@@ -223,31 +223,28 @@ defmodule Raytracer.Scene.Home do
     }
   end
   def ray_at(ray, t) do
-    # ray.origin + t*ray.direction # wait, how does this work? These are vectors, not scalars
     vec_mul(ray.direction, t)
     |> vec_add(ray.origin)
   end
   def ray_colour(ray) do
-    hit_point = hit_sphere(vec3(0, 0, -1), 0.5, ray)
-    if hit_point > 0 do
-      n = ray
-      |> ray_at(hit_point)
-      |> unit_vector
-      |> vec_sub(vec3(0, 0, -1))
+    case hit(:sphere, {vec3(0, 0, -1), 0.5}, ray, -1, 1) do
+      {:hit, rec} ->
+        colour(rec.normal.x+1, rec.normal.y+1, rec.normal.z+1)
+        |> vec_mul(0.5)
+        |> colour
+      _ ->
+        unit_direction = unit_vector(ray.direction)
+        t = 0.5 * (unit_direction.y + 1)
 
-      colour(n.x+1, n.y+1, n.z+1)
-      |> vec_mul(0.5)
-      |> colour
-    else
-      unit_direction = unit_vector(ray.direction)
-      t = 0.5 * (unit_direction.y + 1)
+        colour_1 = colour(1.0, 1.0, 1.0)
+        colour_2 = colour(0.5, 0.7, 1.0)
 
-      colour_1 = colour(1.0, 1.0, 1.0)
-      colour_2 = colour(0.5, 0.7, 1.0)
-
-      vec_mul(colour_1, (1-t))
-      |> vec_add(vec_mul(colour_2, t))
-      |> colour
+        colour_1
+        |> vec_mul((1-t))
+        |> vec_add(
+          colour_2
+          |> vec_mul(t))
+        |> colour
     end
   end
 
@@ -256,17 +253,42 @@ defmodule Raytracer.Scene.Home do
   #
   # Sphere
 
-  def hit_sphere(center, radius, ray) do
-    oc = vec_sub(ray.origin, center)
-    a = dot(ray.direction, ray.direction)
-    b = 2.0 * dot(oc, ray.direction)
-    c = dot(oc, oc) - radius*radius
-    disciminant = b*b - 4*a*c
+  def hit(:sphere, sphere, ray, t_min, t_max) do
+    {center, radius} = sphere
+
+    oc = ray.origin |> vec_sub(center)
+    a = ray.direction |> vec_length_squared()
+    half_b = oc |> dot(ray.direction)
+    c = (oc |> vec_length_squared()) - radius*radius
+    disciminant = half_b*half_b - a*c
 
     if disciminant < 0 do
-      -1.0
+      {:miss}
     else
-      (-b - :math.sqrt(disciminant)) / (2.0 * a)
+
+      # find the nearest root that lies in the acceptable range
+      sqrtd = :math.sqrt(disciminant)
+      root = (-half_b - sqrtd) / a
+
+      # todo, there must be a way to not have ugly nested ifs
+      root_2 = (-half_b + sqrtd) / a
+
+      if (root < t_min or root > t_max) and
+        (root_2 < t_min || t_max < root_2) do
+          {:miss}
+      else
+        p = ray |> ray_at(root)
+
+        rec = %{
+          t: root,
+          p: p,
+          normal: p
+          |> vec_sub(center)
+          |> vec_div(radius)
+        }
+
+        {:hit, rec}
+      end
     end
   end
 
