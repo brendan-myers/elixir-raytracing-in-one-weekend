@@ -251,7 +251,17 @@ defmodule Raytracer.Scene.Home do
 
   ###############################
   #
-  # Sphere
+  # Hit Record
+
+  def set_face_normal(outward_normal, ray) do
+    front_face = ray.direction |> dot(outward_normal)
+
+    if front_face < 0 do
+      outward_normal
+    else
+      outward_normal |> vec_mul(-1)
+    end
+  end
 
   def hit(:sphere, sphere, ray, t_min, t_max) do
     {center, radius} = sphere
@@ -277,14 +287,18 @@ defmodule Raytracer.Scene.Home do
         (root_2 < t_min || t_max < root_2) do
           {:miss}
       else
-        p = ray |> ray_at(root)
+        t = root
+        p = ray |> ray_at(t)
+        normal = p
+        |> vec_sub(center)
+        |> vec_div(radius)
+        |> set_face_normal(ray)
+
 
         rec = %{
-          t: root,
+          t: t,
           p: p,
-          normal: p
-          |> vec_sub(center)
-          |> vec_div(radius)
+          normal: normal
         }
 
         {:hit, rec}
