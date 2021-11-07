@@ -295,15 +295,32 @@ defmodule Raytracer.Scene.Home do
         |> set_face_normal(ray)
 
 
-        rec = %{
+        hit_record = %{
           t: t,
           p: p,
           normal: normal
         }
 
-        {:hit, rec}
+        {:hit, hit_record}
       end
     end
+  end
+
+
+  ###############################
+  #
+  # Hittable list
+  def hittable_list_hit(objects, ray, t_min, t_max, rec) do
+    hittable_list_hit(objects, ray, t_min, t_max, nil)
+  end
+  def hittable_list_hit(object, ray, t_min, t_closest, hit_record) do
+    hit(:sphere, object.params, ray, t_min, t_closest)
+  end
+  def hittable_list_hit([object|objects], ray, t_min, t_closest, hit_record) do
+    rec = hit(:sphere, object.params, ray, t_min, t_closest)
+    new_t_closest = if rec == nil, do: t_closest, else: rec.t
+    new_hit_record = if rec == nil, do: hit_record, else: rec
+    hittable_list_hit(objects, ray, t_min, new_t_closest, new_hit_record)
   end
 
 end
