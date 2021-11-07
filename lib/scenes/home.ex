@@ -13,7 +13,13 @@ defmodule Raytracer.Scene.Home do
     # a transparent full-screen rectangle to catch user input
     {:ok, %ViewPort.Status{size: {width, height}}} = ViewPort.info(opts[:viewport])
 
-    pixel_n = 50 # number of pixels horizontally
+    # objects in the scene
+    hit_list = [
+      %{type: :sphere, params: {vec3(0, 0, -1), 0.5}},
+      %{type: :sphere, params: {vec3(0, -100.5, -1), 100}},
+    ]
+
+    pixel_n = 250 # number of pixels horizontally
 
     aspect_ratio = 1 #16.0 / 9.0
 
@@ -37,7 +43,7 @@ defmodule Raytracer.Scene.Home do
 
     # graph = draw_test(Graph.build(), width, height, pixel_n)
     graph = draw(Graph.build(), width, height, pixel_n,
-      origin, horizontal, vertical, lower_left_corner)
+      origin, horizontal, vertical, lower_left_corner, hit_list)
 
     {:ok, graph, push: graph}
   end
@@ -70,19 +76,19 @@ defmodule Raytracer.Scene.Home do
     end
   end
 
-  def draw(graph, width, height, pixel_n,
-    origin, horizontal, vertical, lower_left_corner) do
+  def draw(graph, width, height, pixel_n, origin, horizontal,
+    vertical, lower_left_corner, hit_list) do
 
     pixel_sz = width / pixel_n
 
     # Logger.info("pixel_sz: #{inspect(pixel_sz)}")
     # Logger.info("width/pixel_sz: #{inspect(width/pixel_sz)}")
 
-    draw_loop_j(graph, width, height, pixel_sz,
-      origin, horizontal, vertical, lower_left_corner, width/pixel_sz, height/pixel_sz)
+    draw_loop_j(graph, width, height, pixel_sz, origin, horizontal,
+      vertical, lower_left_corner, hit_list, width/pixel_sz, height/pixel_sz)
   end
-  def draw_loop_j(graph, width, height, pixel_sz,
-    origin, horizontal, vertical, lower_left_corner, i, j) do
+  def draw_loop_j(graph, width, height, pixel_sz, origin, horizontal,
+    vertical, lower_left_corner, hit_list, i, j) do
 
     case {j} do
       {x} when x<0 ->
@@ -90,14 +96,14 @@ defmodule Raytracer.Scene.Home do
       {_} ->
         # Logger.info("j: #{inspect(j)}")
 
-        updated_graph = draw_loop_i(graph, width, height, pixel_sz,
-          origin, horizontal, vertical, lower_left_corner, i, j)
-        draw_loop_j(updated_graph, width, height, pixel_sz,
-          origin, horizontal, vertical, lower_left_corner, i, j-1)
+        updated_graph = draw_loop_i(graph, width, height, pixel_sz, origin, horizontal,
+          vertical, lower_left_corner, hit_list, i, j)
+        draw_loop_j(updated_graph, width, height, pixel_sz, origin, horizontal,
+          vertical, lower_left_corner, hit_list, i, j-1)
     end
   end
-  def draw_loop_i(graph, width, height, pixel_sz,
-    origin, horizontal, vertical, lower_left_corner, i, j) do
+  def draw_loop_i(graph, width, height, pixel_sz, origin, horizontal,
+    vertical, lower_left_corner, hit_list, i, j) do
 
     case {i} do
       {x} when x<0 ->
@@ -115,10 +121,10 @@ defmodule Raytracer.Scene.Home do
 
         r = ray(origin, direction)
 
-        updated_graph = draw_pixel(graph, i, j, ray_colour(r), pixel_sz)
+        updated_graph = draw_pixel(graph, i, j, ray_colour(r, hit_list), pixel_sz)
 
-        draw_loop_i(updated_graph, width, height, pixel_sz,
-          origin, horizontal, vertical, lower_left_corner, i-1, j)
+        draw_loop_i(updated_graph, width, height, pixel_sz, origin, horizontal,
+          vertical, lower_left_corner, hit_list, i-1, j)
     end
   end
 
@@ -226,8 +232,9 @@ defmodule Raytracer.Scene.Home do
     vec_mul(ray.direction, t)
     |> vec_add(ray.origin)
   end
-  def ray_colour(ray) do
-    case hit(:sphere, {vec3(0, 0, -1), 0.5}, ray, -1, 1) do
+  def ray_colour(ray, hit_list) do
+    # case hit(:sphere, {vec3(0, 0, -1), 0.5}, ray, -1, 1) do
+    case hittable_list_hit(hit_list, ray, 0, 999999) do
       {:hit, rec} ->
         colour(rec.normal.x+1, rec.normal.y+1, rec.normal.z+1)
         |> vec_mul(0.5)
@@ -310,17 +317,32 @@ defmodule Raytracer.Scene.Home do
   ###############################
   #
   # Hittable list
-  def hittable_list_hit(objects, ray, t_min, t_max, rec) do
+  def hittable_list_hit(objects, ray, t_min, t_max) do
     hittable_list_hit(objects, ray, t_min, t_max, nil)
-  end
-  def hittable_list_hit(object, ray, t_min, t_closest, hit_record) do
-    hit(:sphere, object.params, ray, t_min, t_closest)
   end
   def hittable_list_hit([object|objects], ray, t_min, t_closest, hit_record) do
     rec = hit(:sphere, object.params, ray, t_min, t_closest)
-    new_t_closest = if rec == nil, do: t_closest, else: rec.t
-    new_hit_record = if rec == nil, do: hit_record, else: rec
-    hittable_list_hit(objects, ray, t_min, new_t_closest, new_hit_record)
+
+    case rec do
+      {:hit, details} ->
+        hittable_list_hit(objects, ray, t_min, details.t, rec)
+      _ ->
+        hittable_list_hit(objects, ray, t_min, t_closest, hit_record)
+    end
+
+
+  end
+  def hittable_list_hit([], _ray, _t_min, _t_closest, hit_record) do
+    hit_record
+  end
+
+
+  ###############################
+  #
+  # Utilities
+
+  def degrees_to_radians(degrees) do
+    degrees * :math.pi / 180.0
   end
 
 end
