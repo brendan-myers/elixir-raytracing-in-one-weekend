@@ -34,8 +34,8 @@ defmodule Raytracer.Scene.Home do
       {:key, {key_pressed, :press, _}} ->
         {x, y, z} = state.offsets
 
-        left = if key_pressed == "left", do: offset_n, else: 0
-        right = if key_pressed == "right", do: -offset_n, else: 0
+        left = if key_pressed == "left", do: -offset_n, else: 0
+        right = if key_pressed == "right", do: offset_n, else: 0
         forward = if key_pressed == "up", do: -offset_n, else: 0
         backward = if key_pressed == "down", do: offset_n, else: 0
         up = if key_pressed == "[", do: offset_n, else: 0
@@ -68,11 +68,11 @@ defmodule Raytracer.Scene.Home do
       %{type: :sphere, params: {vec3(0, -100.5, -1), 100}},
     ]
 
-    pixel_n = 50 # number of pixels horizontally/vertically, ie resolution
+    pixel_n = 100 # number of pixels horizontally/vertically, ie resolution
 
-    three_d = true
+    three_d = false
 
-    aspect_ratio = 1 #16.0 / 9.0
+    aspect_ratio = width / height #1 #16.0 / 9.0
     # this would change based on aspect ratio
     viewport_height = 2
     viewport_width = aspect_ratio * viewport_height
@@ -122,7 +122,7 @@ defmodule Raytracer.Scene.Home do
       {x} when x<0 ->
         graph
       {_} ->
-        samples = 25
+        samples = 5
 
         pixel_colour = sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, samples)
         |> colour
@@ -138,9 +138,14 @@ defmodule Raytracer.Scene.Home do
 
   def draw_pixel(graph, x, y, colour, pixel_sz, offset, samples) do
     scale = 1 / samples
-    r = trunc(colour.r * 255 * scale)
-    g = trunc(colour.g * 255 * scale)
-    b = trunc(colour.b * 255 * scale)
+
+    r_unscaled = :math.sqrt(colour.r * scale) |> clamp(0, 1)
+    g_unscaled = :math.sqrt(colour.g * scale) |> clamp(0, 1)
+    b_unscaled = :math.sqrt(colour.b * scale) |> clamp(0, 1)
+
+    r = r_unscaled * 255 |> trunc
+    g = g_unscaled * 255 |> trunc
+    b = b_unscaled * 255 |> trunc
 
     x_off = x * pixel_sz + offset
     y_off = y * pixel_sz
@@ -161,7 +166,7 @@ defmodule Raytracer.Scene.Home do
         v = (j + :rand.uniform) / (height/pixel_sz)
 
         r = camera_get_ray(camera, u, v)
-        pixel_colour = ray_colour(r, hit_list)
+        pixel_colour = ray_colour(r, hit_list, 50)
         |> vec_add(colour)
 
         sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, pixel_colour, samples-1)
@@ -177,6 +182,20 @@ defmodule Raytracer.Scene.Home do
       x: x,
       y: y,
       z: z
+    }
+  end
+  def vec3_random() do
+    %{
+      x: :rand.uniform,
+      y: :rand.uniform,
+      z: :rand.uniform,
+    }
+  end
+  def vec3_random(min, max) do
+    %{
+      x: random(min, max),
+      y: random(min, max),
+      z: random(min, max),
     }
   end
   def vec_add(v1, v2) do
@@ -224,6 +243,15 @@ defmodule Raytracer.Scene.Home do
   end
   def unit_vector(v) do
     vec_div(v, vec_length(v))
+  end
+  def random_in_unit_sphere() do
+    v = vec3_random()
+
+    if vec_length_squared(v) < 1 do
+      v
+    else
+      random_in_unit_sphere()
+    end
   end
 
 
@@ -286,11 +314,22 @@ defmodule Raytracer.Scene.Home do
     vec_mul(ray.direction, t)
     |> vec_add(ray.origin)
   end
-  def ray_colour(ray, hit_list) do
-    case hittable_list_hit(hit_list, ray, 0, 999999) do
+  def ray_colour(_ray, _hit_list, 0) do
+    colour(0, 0, 0)
+  end
+  def ray_colour(ray, hit_list, depth) do
+    case hittable_list_hit(hit_list, ray, 0.001, 999999) do
       {:hit, rec} ->
-        colour(rec.normal.x+1, rec.normal.y+1, rec.normal.z+1)
+        # colour(rec.normal.x+1, rec.normal.y+1, rec.normal.z+1)
+        # |> vec_mul(0.5)
+
+        target = rec.p |> vec_add(rec.normal) |> vec_add(random_in_unit_sphere())
+
+        rec.p
+        |> ray(target |> vec_sub(rec.p))
+        |> ray_colour(hit_list, depth-1)
         |> vec_mul(0.5)
+
       _ ->
         unit_direction = unit_vector(ray.direction)
         t = 0.5 * (unit_direction.y + 1)
@@ -396,7 +435,7 @@ defmodule Raytracer.Scene.Home do
     degrees * :math.pi / 180.0
   end
 
-  def rand(min, max) do
+  def random(min, max) do
     min + (max-min) * :rand.uniform
   end
 
