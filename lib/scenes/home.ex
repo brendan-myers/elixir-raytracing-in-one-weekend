@@ -166,7 +166,7 @@ defmodule Raytracer.Scene.Home do
         v = (j + :rand.uniform) / (height/pixel_sz)
 
         r = camera_get_ray(camera, u, v)
-        pixel_colour = ray_colour(r, hit_list, 50)
+        pixel_colour = ray_colour(r, hit_list, 5)
         |> vec_add(colour)
 
         sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, pixel_colour, samples-1)
@@ -253,6 +253,9 @@ defmodule Raytracer.Scene.Home do
       random_in_unit_sphere()
     end
   end
+  def random_unit_vector() do
+    random_in_unit_sphere() |> unit_vector()
+  end
 
 
   ###############################
@@ -320,10 +323,7 @@ defmodule Raytracer.Scene.Home do
   def ray_colour(ray, hit_list, depth) do
     case hittable_list_hit(hit_list, ray, 0.001, 999999) do
       {:hit, rec} ->
-        # colour(rec.normal.x+1, rec.normal.y+1, rec.normal.z+1)
-        # |> vec_mul(0.5)
-
-        target = rec.p |> vec_add(rec.normal) |> vec_add(random_in_unit_sphere())
+        target = rec.p |> vec_add(rec.normal) |> vec_add(random_unit_vector())
 
         rec.p
         |> ray(target |> vec_sub(rec.p))
