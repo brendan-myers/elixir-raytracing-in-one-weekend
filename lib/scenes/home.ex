@@ -13,82 +13,98 @@ defmodule Raytracer.Scene.Home do
     # a transparent full-screen rectangle to catch user input
     {:ok, %ViewPort.Status{size: {width, height}}} = ViewPort.info(opts[:viewport])
 
+    offsets = {0, 0, 0}
+
+    graph = draw(width, height, offsets)
+
+    state = %{
+      graph: graph,
+      offsets: offsets,
+      width: width,
+      height: height
+    }
+
+    {:ok, state, push: graph}
+  end
+
+  def handle_input(event, _context, state) do
+    offset_n = 0.1
+
+    case event do
+      {:key, {key_pressed, :press, _}} ->
+        {x, y, z} = state.offsets
+
+        left = if key_pressed == "left", do: offset_n, else: 0
+        right = if key_pressed == "right", do: -offset_n, else: 0
+        forward = if key_pressed == "up", do: -offset_n, else: 0
+        backward = if key_pressed == "down", do: offset_n, else: 0
+        up = if key_pressed == "[", do: offset_n, else: 0
+        down = if key_pressed == "]", do: -offset_n, else: 0
+
+        offsets = {
+          x + left + right,
+          y + up + down,
+          z + backward + forward
+        }
+        graph = draw(state.width, state.height, offsets)
+
+        new_state = %{
+          graph: graph,
+          offsets: offsets,
+          width: state.width,
+          height: state.height
+        }
+
+        {:noreply, new_state, push: graph}
+      _ ->
+        {:noreply, state}
+    end
+  end
+
+  def draw(width, height, offsets) do
     # objects in the scene
     hit_list = [
       %{type: :sphere, params: {vec3(0, 0, -1), 0.5}},
       %{type: :sphere, params: {vec3(0, -100.5, -1), 100}},
     ]
 
-    pixel_n = 250 # number of pixels horizontally
+    pixel_n = 50 # number of pixels horizontally/vertically, ie resolution
+
+    three_d = true
 
     aspect_ratio = 1 #16.0 / 9.0
-
     # this would change based on aspect ratio
     viewport_height = 2
     viewport_width = aspect_ratio * viewport_height
     focal_length = 1
+    {x, y, z} = offsets
+    eye_spacing = 0.05
 
-    origin = vec3(0, 0, 0)
-    horizontal = vec3(viewport_width, 0, 0)
-    vertical = vec3(0, viewport_height, 0)
-    lower_left_corner = origin
-      |> vec_sub(vec_div(horizontal, 2))
-      |> vec_sub(vec_div(vertical, 2))
-      |> vec_sub(vec3(0, 0, focal_length))
+    if three_d do
+      camera_1 = camera(vec3(-eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height, focal_length)
+      camera_2 = camera(vec3(eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height, focal_length)
 
-    # Logger.info("origin: #{inspect(origin)}")
-    # Logger.info("horizontal: #{inspect(horizontal)}")
-    # Logger.info("vertical: #{inspect(vertical)}")
-    # Logger.info("lower_left_corner: #{inspect(lower_left_corner)}")
+      # graph =
+      draw(Graph.build(), width/2, height, pixel_n, 0, camera_1, hit_list)
+        |> draw(width/2, height, pixel_n, width/2, camera_2, hit_list)
 
-    # graph = draw_test(Graph.build(), width, height, pixel_n)
-    graph = draw(Graph.build(), width, height, pixel_n,
-      origin, horizontal, vertical, lower_left_corner, hit_list)
+      # {:ok, graph, push: graph}
+    else
+      camera = camera(vec3(0+x, 0+y, 0+z), viewport_width, viewport_height, focal_length)
 
-    {:ok, graph, push: graph}
-  end
+      # graph =
+      draw(Graph.build(), width, height, pixel_n, 0, camera, hit_list)
 
-  def draw_test(graph, width, height, pixel_n) do
-    pixel_sz = width / pixel_n
-    draw_test(graph, width, height, pixel_n, pixel_sz, pixel_n*pixel_n)
-  end
-  def draw_test(graph, width, height, pixel_n, pixel_sz, i) do
-    case {i} do
-      {x} when x<0 ->
-        graph
-      {_} ->
-        x = rem(i, pixel_n)
-        y = div(i, pixel_n)
-
-        x_off = div( rem(i, pixel_n)*width, pixel_n)
-        y_off = div( div(i, pixel_n)*height, pixel_n)
-
-        r = trunc((x/pixel_n) * 255)
-        g = trunc((y/pixel_n) * 255)
-        b = trunc(0.25 * 255)
-
-        # Logger.info("x:#{inspect(x)}, y:#{inspect(y)} = r:#{inspect(r)}, g:#{inspect(g)}, b:#{inspect(b)}")
-
-        updated_graph = graph
-        |> rect({pixel_sz, pixel_sz}, fill: {r, g, b}, translate: {x_off, y_off})
-
-        draw_test(updated_graph, width, height, pixel_n, pixel_sz, i-1)
+      # {:ok, %{graph: graph, offsets: offsets}, push: graph}
     end
   end
 
-  def draw(graph, width, height, pixel_n, origin, horizontal,
-    vertical, lower_left_corner, hit_list) do
-
+  def draw(graph, width, height, pixel_n, offset, camera, hit_list) do
     pixel_sz = width / pixel_n
 
-    # Logger.info("pixel_sz: #{inspect(pixel_sz)}")
-    # Logger.info("width/pixel_sz: #{inspect(width/pixel_sz)}")
-
-    draw_loop_j(graph, width, height, pixel_sz, origin, horizontal,
-      vertical, lower_left_corner, hit_list, width/pixel_sz, height/pixel_sz)
+    draw_loop_j(graph, width, height, pixel_sz, offset, camera, hit_list, width/pixel_sz, height/pixel_sz)
   end
-  def draw_loop_j(graph, width, height, pixel_sz, origin, horizontal,
-    vertical, lower_left_corner, hit_list, i, j) do
+  def draw_loop_j(graph, width, height, pixel_sz, offset, camera, hit_list, i, j) do
 
     case {j} do
       {x} when x<0 ->
@@ -96,51 +112,60 @@ defmodule Raytracer.Scene.Home do
       {_} ->
         # Logger.info("j: #{inspect(j)}")
 
-        updated_graph = draw_loop_i(graph, width, height, pixel_sz, origin, horizontal,
-          vertical, lower_left_corner, hit_list, i, j)
-        draw_loop_j(updated_graph, width, height, pixel_sz, origin, horizontal,
-          vertical, lower_left_corner, hit_list, i, j-1)
+        updated_graph = draw_loop_i(graph, width, height, pixel_sz, offset, camera, hit_list, i, j)
+        draw_loop_j(updated_graph, width, height, pixel_sz, offset, camera, hit_list, i, j-1)
     end
   end
-  def draw_loop_i(graph, width, height, pixel_sz, origin, horizontal,
-    vertical, lower_left_corner, hit_list, i, j) do
+  def draw_loop_i(graph, width, height, pixel_sz, offset, camera, hit_list, i, j) do
 
     case {i} do
       {x} when x<0 ->
         graph
       {_} ->
-        # Logger.info("  i: #{inspect(i)}")
+        samples = 25
 
-        u = i / (width/pixel_sz)
-        v = j / (height/pixel_sz)
+        pixel_colour = sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, samples)
+        |> colour
 
-        direction = lower_left_corner
-        |> vec_add(vec_mul(horizontal, u))
-        |> vec_add(vec_mul(vertical, v))
-        |> vec_sub(origin)
+        # flip the image the right way up!
+        flip_j = height/pixel_sz - j
 
-        r = ray(origin, direction)
+        updated_graph = draw_pixel(graph, i, flip_j, pixel_colour, pixel_sz, offset, samples)
 
-        updated_graph = draw_pixel(graph, i, j, ray_colour(r, hit_list), pixel_sz)
-
-        draw_loop_i(updated_graph, width, height, pixel_sz, origin, horizontal,
-          vertical, lower_left_corner, hit_list, i-1, j)
+        draw_loop_i(updated_graph, width, height, pixel_sz, offset, camera, hit_list, i-1, j)
     end
   end
 
-  def draw_pixel(graph, x, y, colour, pixel_sz) do
-    # Logger.info("#{inspect(colour)}")
+  def draw_pixel(graph, x, y, colour, pixel_sz, offset, samples) do
+    scale = 1 / samples
+    r = trunc(colour.r * 255 * scale)
+    g = trunc(colour.g * 255 * scale)
+    b = trunc(colour.b * 255 * scale)
 
-    r = trunc(colour.r * 255)
-    g = trunc(colour.g * 255)
-    b = trunc(colour.b * 255)
-
-    x_off = x * pixel_sz
+    x_off = x * pixel_sz + offset
     y_off = y * pixel_sz
 
-    # Logger.info("x, y, x_off, y_off, colour, sz; #{inspect({x, y, x_off, y_off, {r, g, b}, pixel_sz})}")
-
     graph |> rect({pixel_sz, pixel_sz}, fill: {r, g, b}, translate: {x_off, y_off})
+  end
+
+  def sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, samples) do
+    sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, vec3(0, 0, 0), samples)
+  end
+
+  def sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, colour, samples) do
+    case samples do
+      x when x<=0 ->
+        colour
+      _ ->
+        u = (i + :rand.uniform) / (width/pixel_sz)
+        v = (j + :rand.uniform) / (height/pixel_sz)
+
+        r = camera_get_ray(camera, u, v)
+        pixel_colour = ray_colour(r, hit_list)
+        |> vec_add(colour)
+
+        sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, pixel_colour, samples-1)
+    end
   end
 
   ###############################
@@ -220,6 +245,35 @@ defmodule Raytracer.Scene.Home do
 
   ###############################
   #
+  # Camera
+
+  def camera(origin, viewport_width, viewport_height, focal_length) do
+    horizontal = vec3(viewport_width, 0, 0)
+    vertical = vec3(0, viewport_height, 0)
+    lower_left_corner = origin
+      |> vec_sub(vec_div(horizontal, 2))
+      |> vec_sub(vec_div(vertical, 2))
+      |> vec_sub(vec3(0, 0, focal_length))
+
+    %{
+      origin: origin,
+      horizontal: horizontal,
+      vertical: vertical,
+      lower_left_corner: lower_left_corner
+    }
+  end
+
+  def camera_get_ray(camera, u, v) do
+    direction = camera.lower_left_corner
+    |> vec_add(vec_mul(camera.horizontal, u))
+    |> vec_add(vec_mul(camera.vertical, v))
+    |> vec_sub(camera.origin)
+
+    ray(camera.origin, direction)
+  end
+
+  ###############################
+  #
   # Ray
 
   def ray(origin, direction) do
@@ -233,12 +287,10 @@ defmodule Raytracer.Scene.Home do
     |> vec_add(ray.origin)
   end
   def ray_colour(ray, hit_list) do
-    # case hit(:sphere, {vec3(0, 0, -1), 0.5}, ray, -1, 1) do
     case hittable_list_hit(hit_list, ray, 0, 999999) do
       {:hit, rec} ->
         colour(rec.normal.x+1, rec.normal.y+1, rec.normal.z+1)
         |> vec_mul(0.5)
-        |> colour
       _ ->
         unit_direction = unit_vector(ray.direction)
         t = 0.5 * (unit_direction.y + 1)
@@ -251,7 +303,6 @@ defmodule Raytracer.Scene.Home do
         |> vec_add(
           colour_2
           |> vec_mul(t))
-        |> colour
     end
   end
 
@@ -343,6 +394,21 @@ defmodule Raytracer.Scene.Home do
 
   def degrees_to_radians(degrees) do
     degrees * :math.pi / 180.0
+  end
+
+  def rand(min, max) do
+    min + (max-min) * :rand.uniform
+  end
+
+  def clamp(x, min, max) do
+    case x do
+      x when x < min ->
+        min
+      x when x > max ->
+        max
+      _ ->
+        x
+    end
   end
 
 end
