@@ -5,7 +5,7 @@ use Mix.Config
 # Configure the main viewport for the Scenic application
 config :raytracer, :viewport, %{
   name: :main_viewport,
-  size: {400, 400},
+  size: {600, 600},
   default_scene: {Raytracer.Scene.Home, nil},
   drivers: [
     %{

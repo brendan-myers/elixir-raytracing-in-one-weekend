@@ -13,13 +13,19 @@ defmodule Raytracer.Scene.Home do
     # a transparent full-screen rectangle to catch user input
     {:ok, %ViewPort.Status{size: {width, height}}} = ViewPort.info(opts[:viewport])
 
-    offsets = {0, 0, 0}
+    params = %{
+      offsets: {0, 0, 0},
+      fov_offset: 0,
+      pitch: 0,
+      yaw: 0,
+      roll: 0
+    }
 
-    graph = draw(width, height, offsets)
+    graph = draw(width, height, params)
 
     state = %{
       graph: graph,
-      offsets: offsets,
+      params: params,
       width: width,
       height: height
     }
@@ -29,10 +35,14 @@ defmodule Raytracer.Scene.Home do
 
   def handle_input(event, _context, state) do
     offset_n = 0.1
+    fov_n = 0.1
+    pitch_n = 0.5
+    yaw_n = 0.5
+    roll_n = 0.5
 
     case event do
       {:key, {key_pressed, :press, _}} ->
-        {x, y, z} = state.offsets
+        {x, y, z} = state.params.offsets
 
         left = if key_pressed == "left", do: -offset_n, else: 0
         right = if key_pressed == "right", do: offset_n, else: 0
@@ -40,17 +50,37 @@ defmodule Raytracer.Scene.Home do
         backward = if key_pressed == "down", do: offset_n, else: 0
         up = if key_pressed == "[", do: offset_n, else: 0
         down = if key_pressed == "]", do: -offset_n, else: 0
+        fov_inc = if key_pressed == "=", do: fov_n, else: 0
+        fov_dec = if key_pressed == "-", do: -fov_n, else: 0
+        pitch_inc = if key_pressed == "I", do: -pitch_n, else: 0
+        pitch_dec = if key_pressed == "K", do: pitch_n, else: 0
+        yaw_inc = if key_pressed == "J", do: yaw_n, else: 0
+        yaw_dec = if key_pressed == "L", do: -yaw_n, else: 0
+        roll_inc = if key_pressed == "U", do: roll_n, else: 0
+        roll_dec = if key_pressed == "O", do: -roll_n, else: 0
 
         offsets = {
           x + left + right,
           y + up + down,
           z + backward + forward
         }
-        graph = draw(state.width, state.height, offsets)
+        fov_offset = state.params.fov_offset + fov_inc + fov_dec
+        pitch = state.params.pitch + pitch_inc + pitch_dec
+        yaw = state.params.yaw + yaw_inc + yaw_dec
+        roll = state.params.roll + roll_inc + roll_dec
+        params = %{
+          offsets: offsets,
+          fov_offset: fov_offset,
+          pitch: pitch,
+          yaw: yaw,
+          roll: roll
+        }
+
+        graph = draw(state.width, state.height, params)
 
         new_state = %{
           graph: graph,
-          offsets: offsets,
+          params: params,
           width: state.width,
           height: state.height
         }
@@ -61,41 +91,56 @@ defmodule Raytracer.Scene.Home do
     end
   end
 
-  def draw(width, height, offsets) do
+  def draw(width, height, params) do
     # objects in the scene
     hit_list = [
-      %{type: :sphere, params: {vec3(0, 0, -1), 0.5}},
-      %{type: :sphere, params: {vec3(0, -100.5, -1), 100}},
+      %{
+        type: :sphere,
+        params: {vec3(-0.5, 0, -1), 0.5},
+        material: material_metal(colour(0.8, 0.6, 0.2), 1)
+      },
+      %{
+        type: :sphere,
+        params: {vec3(0.5, 0, -1), 0.5},
+        material: material_metal(colour(0.7, 0.7, 0.7))
+      },
+      %{
+        type: :sphere,
+        params: {vec3(0, 0.5, -1), 0.5},
+        material: material_metal(colour(0.7, 0.7, 0.7))
+      },
+      %{
+        type: :sphere,
+        params: {vec3(0, -100.5, -1), 100},
+        material: material_default(colour(0.8, 0.8, 0))
+      },
     ]
 
     pixel_n = 100 # number of pixels horizontally/vertically, ie resolution
 
     three_d = false
 
-    aspect_ratio = width / height #1 #16.0 / 9.0
+    aspect_ratio = width / height
     # this would change based on aspect ratio
     viewport_height = 2
-    viewport_width = aspect_ratio * viewport_height
-    focal_length = 1
-    {x, y, z} = offsets
+    viewport_width = if three_d, do: aspect_ratio * viewport_height / 2 , else: aspect_ratio * viewport_height
+    focal_length = 1 + params.fov_offset
+    {x, y, z} = params.offsets
     eye_spacing = 0.05
 
     if three_d do
-      camera_1 = camera(vec3(-eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height, focal_length)
-      camera_2 = camera(vec3(eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height, focal_length)
+      camera_1 = camera(vec3(-eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height,
+        focal_length, params.pitch, params.yaw, params.roll)
+      camera_2 = camera(vec3(eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height,
+        focal_length, params.pitch, params.yaw, params.roll)
 
-      # graph =
       draw(Graph.build(), width/2, height, pixel_n, 0, camera_1, hit_list)
         |> draw(width/2, height, pixel_n, width/2, camera_2, hit_list)
-
-      # {:ok, graph, push: graph}
     else
-      camera = camera(vec3(0+x, 0+y, 0+z), viewport_width, viewport_height, focal_length)
+      camera = camera(vec3(0+x, 0+y, 0+z), viewport_width, viewport_height,
+        focal_length, params.pitch, params.yaw, params.roll)
 
-      # graph =
       draw(Graph.build(), width, height, pixel_n, 0, camera, hit_list)
-
-      # {:ok, %{graph: graph, offsets: offsets}, push: graph}
     end
   end
 
@@ -110,7 +155,7 @@ defmodule Raytracer.Scene.Home do
       {x} when x<0 ->
         graph
       {_} ->
-        # Logger.info("j: #{inspect(j)}")
+        Logger.info("j: #{inspect(j)}")
 
         updated_graph = draw_loop_i(graph, width, height, pixel_sz, offset, camera, hit_list, i, j)
         draw_loop_j(updated_graph, width, height, pixel_sz, offset, camera, hit_list, i, j-1)
@@ -228,6 +273,13 @@ defmodule Raytracer.Scene.Home do
   def vec_length_squared(v) do
     v.x*v.x + v.y*v.y + v.z*v.z
   end
+  def vec_element_mul(v1, v2) do
+    %{
+      x: v1.x * v2.x,
+      y: v1.y * v2.y,
+      z: v1.z * v2.z
+    }
+  end
 
   ### Helpers
 
@@ -256,6 +308,17 @@ defmodule Raytracer.Scene.Home do
   def random_unit_vector() do
     random_in_unit_sphere() |> unit_vector()
   end
+  def near_zero(v) do
+    s = 1.0e-18
+
+    (abs(v.x) < s) and (abs(v.y) < s) and (abs(v.z) < s)
+  end
+  def reflect(v, n) do
+    v
+    |> vec_sub(
+      n |> vec_mul(2 * dot(v, n))
+    )
+  end
 
 
   ###############################
@@ -276,9 +339,54 @@ defmodule Raytracer.Scene.Home do
 
   ###############################
   #
+  # Materials
+
+  def material_default() do
+    material_default(vec3(0, 0, 0))
+  end
+  def material_default(attenuation) do
+    %{
+      attenuation: attenuation,
+      scatter: fn(_ray, rec) ->
+        scatter_d = rec.normal |> vec_add(random_unit_vector())
+        scatter_direction = if near_zero(scatter_d), do: rec.normal, else: scatter_d
+        {true, ray(rec.p, scatter_direction)}
+      end
+    }
+  end
+
+  def material_metal() do
+    material_metal(vec3(0, 0, 0), 0)
+  end
+
+  def material_metal(attenuation) do
+    material_metal(attenuation, 0)
+  end
+  def material_metal(attenuation, fuzz) do
+    %{
+      attenuation: attenuation,
+      fuzz: fuzz,
+      scatter: fn(ray, rec) ->
+        reflected = ray.direction
+        |> unit_vector()
+        |> reflect(rec.normal)
+
+        scattered = ray(rec.p, reflected
+          |> vec_add(
+            random_in_unit_sphere() |> vec_mul(clamp(fuzz, 0, 1) )
+          ))
+        scatter = scattered.direction |> dot(rec.normal)
+        {scatter > 0, scattered}
+      end
+    }
+  end
+
+
+  ###############################
+  #
   # Camera
 
-  def camera(origin, viewport_width, viewport_height, focal_length) do
+  def camera(origin, viewport_width, viewport_height, focal_length, pitch, yaw, roll) do
     horizontal = vec3(viewport_width, 0, 0)
     vertical = vec3(0, viewport_height, 0)
     lower_left_corner = origin
@@ -290,11 +398,17 @@ defmodule Raytracer.Scene.Home do
       origin: origin,
       horizontal: horizontal,
       vertical: vertical,
-      lower_left_corner: lower_left_corner
+      lower_left_corner: lower_left_corner,
+      pitch: pitch,
+      yaw: yaw,
+      roll: roll
     }
   end
 
   def camera_get_ray(camera, u, v) do
+    pitch_radians = degrees_to_radians(camera.pitch)
+    yaw_radians = degrees_to_radians(camera.yaw)
+
     direction = camera.lower_left_corner
     |> vec_add(vec_mul(camera.horizontal, u))
     |> vec_add(vec_mul(camera.vertical, v))
@@ -323,13 +437,13 @@ defmodule Raytracer.Scene.Home do
   def ray_colour(ray, hit_list, depth) do
     case hittable_list_hit(hit_list, ray, 0.001, 999999) do
       {:hit, rec} ->
-        target = rec.p |> vec_add(rec.normal) |> vec_add(random_unit_vector())
-
-        rec.p
-        |> ray(target |> vec_sub(rec.p))
-        |> ray_colour(hit_list, depth-1)
-        |> vec_mul(0.5)
-
+        {scatter, v} = rec.material.scatter.(ray, rec)
+        if scatter do
+          ray_colour(v, hit_list, depth-1)
+          |> vec_element_mul(rec.material.attenuation)
+        else
+          colour(0, 0, 0)
+        end
       _ ->
         unit_direction = unit_vector(ray.direction)
         t = 0.5 * (unit_direction.y + 1)
@@ -360,8 +474,9 @@ defmodule Raytracer.Scene.Home do
     end
   end
 
-  def hit(:sphere, sphere, ray, t_min, t_max) do
-    {center, radius} = sphere
+  # def hit(object.type)
+  def hit(object, ray, t_min, t_max) do
+    {center, radius} = object.params
 
     oc = ray.origin |> vec_sub(center)
     a = ray.direction |> vec_length_squared()
@@ -395,7 +510,8 @@ defmodule Raytracer.Scene.Home do
         hit_record = %{
           t: t,
           p: p,
-          normal: normal
+          normal: normal,
+          material: object.material
         }
 
         {:hit, hit_record}
@@ -411,7 +527,7 @@ defmodule Raytracer.Scene.Home do
     hittable_list_hit(objects, ray, t_min, t_max, nil)
   end
   def hittable_list_hit([object|objects], ray, t_min, t_closest, hit_record) do
-    rec = hit(:sphere, object.params, ray, t_min, t_closest)
+    rec = hit(object, ray, t_min, t_closest)
 
     case rec do
       {:hit, details} ->
