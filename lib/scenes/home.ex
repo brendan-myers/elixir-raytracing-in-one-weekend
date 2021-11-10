@@ -288,19 +288,6 @@ defmodule Raytracer.Scene.Home do
 
     r_out_perp |> vec_add(r_out_parallel)
   end
-  def refract_alt(v, n, ni, nt) do
-    uv = unit_vector(v)
-    dt = dot(uv, n)
-    ni_o_nt = ni / nt
-    disciminant = 1 - ni_o_nt * ni_o_nt * (1 - dt * dt)
-
-    if disciminant > 0 do
-      refracted = ni_o_nt * (vec_sub(uv, vec_mul(n, dt))) - n * :math.sqrt(disciminant)
-      {true, refracted}
-    else
-      {false}
-    end
-  end
 
 
   ###############################
@@ -368,14 +355,24 @@ defmodule Raytracer.Scene.Home do
       scatter: fn(ray, rec) ->
         refraction_ratio = if rec.front_face, do: 1.0/index_of_refraction, else: index_of_refraction
 
-        refracted = ray.direction
-        |> unit_vector()
-        |> refract(
-          rec.normal,
-          refraction_ratio
-        )
+        unit_direction = ray.direction |> unit_vector()
 
-        {true, ray(rec.p, refracted)}
+        cos_theta = unit_direction
+        |> vec_mul(-1)
+        |> dot(rec.normal)
+        |> min(1)
+
+        sin_theta = :math.sqrt(1 - cos_theta*cos_theta)
+
+        cannot_refract = refraction_ratio * sin_theta > 1
+
+        direction = if cannot_refract do
+          reflect(unit_direction, rec.normal)
+        else
+          refract(unit_direction, rec.normal, refraction_ratio)
+        end
+
+        {true, ray(rec.p, direction)}
       end
     }
   end
