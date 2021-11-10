@@ -35,46 +35,61 @@ defmodule Raytracer.Scene.Home do
 
   def draw(width, height, params) do
     # objects in the scene
+    r = :math.cos(:math.pi/4)
     hit_list = [
+      # %{
+      #   # left
+      #   type: :sphere,
+      #   params: {vec3(-1, 0, -1), 0.5},
+      #   # material: material_default(colour(0.8, 0, 0))
+      #   material: material_dielectric(1.5)
+      # },
+      # %{
+      #   # left
+      #   type: :sphere,
+      #   params: {vec3(-1, 0, -1), 0.4},
+      #   material: material_dielectric(1.5)
+      # },
+      # %{
+      #   # center
+      #   type: :sphere,
+      #   params: {vec3(0, 0, -1), 0.5},
+      #   material: material_default(colour(0.1, 0.2, 0.5))
+      # },
+      # %{
+      #   # right
+      #   type: :sphere,
+      #   params: {vec3(1, 0, -1), 0.5},
+      #   material: material_metal(colour(0.8, 0.6, 0.2), 1)
+      # },
+      # %{
+      #   # ground
+      #   type: :sphere,
+      #   params: {vec3(0, -100.5, -1), 100},
+      #   material: material_default(colour(0.8, 0.8, 0))
+      # }
       %{
-        # left
         type: :sphere,
-        params: {vec3(-1, 0, -1), 0.5},
-        # material: material_default(colour(0.8, 0, 0))
-        material: material_dielectric(1.5)
+        params: {vec3(-r, 0, -1), r},
+        material: material_default(colour(0,0,1))
       },
       %{
-        # left
         type: :sphere,
-        params: {vec3(-1, 0, -1), 0.4},
-        material: material_dielectric(1.5)
-      },
-      %{
-        # center
-        type: :sphere,
-        params: {vec3(0, 0, -1), 0.5},
-        material: material_default(colour(0.1, 0.2, 0.5))
-      },
-      %{
-        # right
-        type: :sphere,
-        params: {vec3(1, 0, -1), 0.5},
-        material: material_metal(colour(0.8, 0.6, 0.2), 1)
-      },
-      %{
-        # ground
-        type: :sphere,
-        params: {vec3(0, -100.5, -1), 100},
-        material: material_default(colour(0.8, 0.8, 0))
+        params: {vec3(r, 0, -1), r},
+        material: material_default(colour(1,0,0))
       }
     ]
 
-    pixel_n = 200 # number of pixels horizontally/vertically, ie resolution
+    pixel_n = 160 # number of pixels horizontally/vertically, ie resolution
 
     three_d = false
 
+    vfov = 90
+    h = :math.tan(
+      (vfov |> degrees_to_radians()) / 2
+    )
     aspect_ratio = width / height
-    viewport_height = 2
+    viewport_height = 2 * h
     viewport_width = if three_d, do: aspect_ratio * viewport_height / 2 , else: aspect_ratio * viewport_height
     focal_length = 1 + params.fov_offset
     {x, y, z} = params.offsets
@@ -102,7 +117,6 @@ defmodule Raytracer.Scene.Home do
     draw_loop_j(graph, width, height, pixel_sz, offset, camera, hit_list, width/pixel_sz, height/pixel_sz)
   end
   def draw_loop_j(graph, width, height, pixel_sz, offset, camera, hit_list, i, j) do
-
     case {j} do
       {x} when x<0 ->
         graph
