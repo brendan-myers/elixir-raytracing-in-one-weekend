@@ -35,80 +35,86 @@ defmodule Raytracer.Scene.Home do
 
   def draw(width, height, params) do
     # objects in the scene
-    r = :math.cos(:math.pi/4)
+    # r = :math.cos(:math.pi/4)
     hit_list = [
-      # %{
-      #   # left
-      #   type: :sphere,
-      #   params: {vec3(-1, 0, -1), 0.5},
-      #   # material: material_default(colour(0.8, 0, 0))
-      #   material: material_dielectric(1.5)
-      # },
-      # %{
-      #   # left
-      #   type: :sphere,
-      #   params: {vec3(-1, 0, -1), 0.4},
-      #   material: material_dielectric(1.5)
-      # },
-      # %{
-      #   # center
-      #   type: :sphere,
-      #   params: {vec3(0, 0, -1), 0.5},
-      #   material: material_default(colour(0.1, 0.2, 0.5))
-      # },
-      # %{
-      #   # right
-      #   type: :sphere,
-      #   params: {vec3(1, 0, -1), 0.5},
-      #   material: material_metal(colour(0.8, 0.6, 0.2), 1)
-      # },
-      # %{
-      #   # ground
-      #   type: :sphere,
-      #   params: {vec3(0, -100.5, -1), 100},
-      #   material: material_default(colour(0.8, 0.8, 0))
-      # }
       %{
+        # left
         type: :sphere,
-        params: {vec3(-r, 0, -1), r},
-        material: material_default(colour(0,0,1))
+        params: {vec3(-1, 0, -1), 0.5},
+        # material: material_default(colour(0.8, 0, 0))
+        material: material_dielectric(1.5)
       },
       %{
+        # left
         type: :sphere,
-        params: {vec3(r, 0, -1), r},
-        material: material_default(colour(1,0,0))
+        params: {vec3(-1, 0, -1), -0.45},
+        material: material_dielectric(1.5)
+      },
+      %{
+        # center
+        type: :sphere,
+        params: {vec3(0, 0, -1), 0.5},
+        material: material_default(colour(0.1, 0.2, 0.5))
+      },
+      %{
+        # right
+        type: :sphere,
+        params: {vec3(1, 0, -1), 0.5},
+        material: material_metal(colour(0.8, 0.6, 0.2), 0)
+      },
+      %{
+        # ground
+        type: :sphere,
+        params: {vec3(0, -100.5, -1), 100},
+        material: material_default(colour(0.8, 0.8, 0))
       }
     ]
 
-    pixel_n = 160 # number of pixels horizontally/vertically, ie resolution
+    pixel_n = 400 # number of pixels horizontally/vertically, ie resolution
 
-    three_d = false
+    # three_d = false
 
-    vfov = 90
+    vfov = 30
     h = :math.tan(
       (vfov |> degrees_to_radians()) / 2
     )
     aspect_ratio = width / height
     viewport_height = 2 * h
-    viewport_width = if three_d, do: aspect_ratio * viewport_height / 2 , else: aspect_ratio * viewport_height
-    focal_length = 1 + params.fov_offset
-    {x, y, z} = params.offsets
-    eye_spacing = 0.05
+    # viewport_width = if three_d, do: aspect_ratio * viewport_height / 2 , else: aspect_ratio * viewport_height
+    viewport_width = aspect_ratio * viewport_height
+    focal_length = 1 #+ params.fov_offset
+    # {x, y, z} = params.offsets
+    # eye_spacing = 0.05
 
-    if three_d do
-      camera_1 = camera(vec3(-eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height,
-        focal_length, params.pitch, params.yaw, params.roll)
-      camera_2 = camera(vec3(eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height,
-        focal_length, params.pitch, params.yaw, params.roll)
+    look_from = vec3(-2, 2, 1)
+    look_at = vec3(0, 0, -1)
+    v_up = vec3(0, 1, 0)
 
-      draw(Graph.build(), width/2, height, pixel_n, 0, camera_1, hit_list)
-        |> draw(width/2, height, pixel_n, width/2, camera_2, hit_list)
-    else
-      camera = camera(vec3(0+x, 0+y, 0+z), viewport_width, viewport_height,
-        focal_length, params.pitch, params.yaw, params.roll)
+    camera_params = %{
+      origin: look_from,
+      look_at: look_at,
+      viewport_width: viewport_width,
+      viewport_height: viewport_height,
+      focal_length: focal_length,
+      v_up: v_up,
+      pitch: params.pitch,
+      yaw: params.yaw,
+      roll: params.roll
+    }
 
-      draw(Graph.build(), width, height, pixel_n, 0, camera, hit_list)
-    end
+    # if three_d do
+    #   camera_1 = camera(vec3(-eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height,
+    #     focal_length, params.pitch, params.yaw, params.roll)
+    #   camera_2 = camera(vec3(eye_spacing+x, 0+y, 0+z), viewport_width, viewport_height,
+    #     focal_length, params.pitch, params.yaw, params.roll)
+
+    #   draw(Graph.build(), width/2, height, pixel_n, 0, camera_1, hit_list)
+    #     |> draw(width/2, height, pixel_n, width/2, camera_2, hit_list)
+    # else
+    camera = camera(camera_params)
+
+    draw(Graph.build(), width, height, pixel_n, 0, camera, hit_list)
+    # end
   end
 
   def draw(graph, width, height, pixel_n, offset, camera, hit_list) do
@@ -133,7 +139,7 @@ defmodule Raytracer.Scene.Home do
       {x} when x<0 ->
         graph
       {_} ->
-        samples = 20
+        samples = 100
 
         pixel_colour = sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, samples)
         |> colour
@@ -310,7 +316,7 @@ defmodule Raytracer.Scene.Home do
   def reflectance(cosine, ref_idx) do
     r0 = (1 - ref_idx) / (1 + ref_idx)
     r0_sq = r0*r0
-    r0 + (1 - r0) * :math.pow(1 - cosine, 5)
+    r0_sq + (1 - r0_sq) * :math.pow(1 - cosine, 5)
   end
 
 
@@ -394,7 +400,7 @@ defmodule Raytracer.Scene.Home do
 
         cannot_refract = refraction_ratio * sin_theta > 1
 
-        direction = if cannot_refract || reflectance(cos_theta, refraction_ratio) > :random.uniform() do
+        direction = if cannot_refract || reflectance(cos_theta, refraction_ratio) > :rand.uniform() do
           reflect(unit_direction, rec.normal)
         else
           refract(unit_direction, rec.normal, refraction_ratio)
@@ -409,32 +415,40 @@ defmodule Raytracer.Scene.Home do
   #
   # Camera
 
-  def camera(origin, viewport_width, viewport_height, focal_length, pitch, yaw, roll) do
-    horizontal = vec3(viewport_width, 0, 0)
-    vertical = vec3(0, viewport_height, 0)
-    lower_left_corner = origin
-      |> vec_sub(vec_div(horizontal, 2))
-      |> vec_sub(vec_div(vertical, 2))
-      |> vec_sub(vec3(0, 0, focal_length))
+  def camera(params) do
+    w = params.origin
+    |> vec_sub(params.look_at)
+    |> unit_vector()
+
+    u = params.v_up
+    |> cross(w)
+    |> unit_vector()
+
+    v = w |> cross(u)
+
+    horizontal = u |> vec_mul(params.viewport_width)
+    vertical = v |> vec_mul(params.viewport_height)
+
+    lower_left_corner = params.origin
+    |> vec_sub(vec_div(horizontal, 2))
+    |> vec_sub(vec_div(vertical, 2))
+    |> vec_sub(w)
 
     %{
-      origin: origin,
+      origin: params.origin,
       horizontal: horizontal,
       vertical: vertical,
       lower_left_corner: lower_left_corner,
-      pitch: pitch,
-      yaw: yaw,
-      roll: roll
+      pitch: params.pitch,
+      yaw: params.yaw,
+      roll: params.roll
     }
   end
 
-  def camera_get_ray(camera, u, v) do
-    pitch_radians = degrees_to_radians(camera.pitch)
-    yaw_radians = degrees_to_radians(camera.yaw)
-
+  def camera_get_ray(camera, s, t) do
     direction = camera.lower_left_corner
-    |> vec_add(vec_mul(camera.horizontal, u))
-    |> vec_add(vec_mul(camera.vertical, v))
+    |> vec_add(vec_mul(camera.horizontal, s))
+    |> vec_add(vec_mul(camera.vertical, t))
     |> vec_sub(camera.origin)
 
     ray(camera.origin, direction)
