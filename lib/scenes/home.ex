@@ -70,11 +70,15 @@ defmodule Raytracer.Scene.Home do
       }
     ]
 
-    pixel_n = 400 # number of pixels horizontally/vertically, ie resolution
+    pixel_n = 200 # number of pixels horizontally/vertically, ie resolution
 
     # three_d = false
 
-    vfov = 30
+    look_from = vec3(3, 3, 2)
+    look_at = vec3(0, 0, -1)
+    v_up = vec3(0, 1, 0)
+
+    vfov = 20
     h = :math.tan(
       (vfov |> degrees_to_radians()) / 2
     )
@@ -85,10 +89,10 @@ defmodule Raytracer.Scene.Home do
     focal_length = 1 #+ params.fov_offset
     # {x, y, z} = params.offsets
     # eye_spacing = 0.05
-
-    look_from = vec3(-2, 2, 1)
-    look_at = vec3(0, 0, -1)
-    v_up = vec3(0, 1, 0)
+    aperture = 2
+    focus_dist = look_from
+    |> vec_sub(look_at)
+    |> vec_length()
 
     camera_params = %{
       origin: look_from,
@@ -96,6 +100,8 @@ defmodule Raytracer.Scene.Home do
       viewport_width: viewport_width,
       viewport_height: viewport_height,
       focal_length: focal_length,
+      aperture: aperture,
+      focus_dist: focus_dist,
       v_up: v_up,
       pitch: params.pitch,
       yaw: params.yaw,
@@ -268,6 +274,19 @@ defmodule Raytracer.Scene.Home do
   def unit_vector(v) do
     vec_div(v, vec_length(v))
   end
+  def random_in_unit_disk() do
+    p = vec3(
+      :rand.uniform() * 2 -1,
+      :rand.uniform() * 2 -1,
+      0
+    )
+
+    if p |> vec_length_squared() >= 1 do
+      random_in_unit_disk()
+    else
+      p
+    end
+  end
   def random_in_unit_sphere() do
     v = vec3_random()
 
@@ -426,19 +445,30 @@ defmodule Raytracer.Scene.Home do
 
     v = w |> cross(u)
 
-    horizontal = u |> vec_mul(params.viewport_width)
-    vertical = v |> vec_mul(params.viewport_height)
+    horizontal = u
+    |> vec_mul(params.viewport_width)
+    |> vec_mul(params.focus_dist)
+
+    vertical = v
+    |> vec_mul(params.viewport_height)
+    |> vec_mul(params.focus_dist)
 
     lower_left_corner = params.origin
     |> vec_sub(vec_div(horizontal, 2))
     |> vec_sub(vec_div(vertical, 2))
-    |> vec_sub(w)
+    |> vec_sub(
+      w |> vec_mul(params.focus_dist)
+    )
 
     %{
       origin: params.origin,
       horizontal: horizontal,
       vertical: vertical,
       lower_left_corner: lower_left_corner,
+      lens_radius: params.aperture / 2,
+      u: u,
+      v: v,
+      w: w,
       pitch: params.pitch,
       yaw: params.yaw,
       roll: params.roll
@@ -446,12 +476,20 @@ defmodule Raytracer.Scene.Home do
   end
 
   def camera_get_ray(camera, s, t) do
+    rd = random_in_unit_disk() |> vec_mul(camera.lens_radius)
+    offset = camera.u
+    |> vec_mul(rd.x)
+    |> vec_add(
+      camera.v |> vec_mul(rd.y)
+    )
+
     direction = camera.lower_left_corner
     |> vec_add(vec_mul(camera.horizontal, s))
     |> vec_add(vec_mul(camera.vertical, t))
     |> vec_sub(camera.origin)
+    |> vec_sub(offset)
 
-    ray(camera.origin, direction)
+    ray(camera.origin |> vec_add(offset), direction)
   end
 
   ###############################
