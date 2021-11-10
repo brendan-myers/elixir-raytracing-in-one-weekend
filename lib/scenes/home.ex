@@ -33,95 +33,42 @@ defmodule Raytracer.Scene.Home do
     {:ok, state, push: graph}
   end
 
-  def handle_input(event, _context, state) do
-    offset_n = 0.1
-    fov_n = 0.1
-    pitch_n = 0.5
-    yaw_n = 0.5
-    roll_n = 0.5
-
-    case event do
-      {:key, {key_pressed, :press, _}} ->
-        {x, y, z} = state.params.offsets
-
-        left = if key_pressed == "left", do: -offset_n, else: 0
-        right = if key_pressed == "right", do: offset_n, else: 0
-        forward = if key_pressed == "up", do: -offset_n, else: 0
-        backward = if key_pressed == "down", do: offset_n, else: 0
-        up = if key_pressed == "[", do: offset_n, else: 0
-        down = if key_pressed == "]", do: -offset_n, else: 0
-        fov_inc = if key_pressed == "=", do: fov_n, else: 0
-        fov_dec = if key_pressed == "-", do: -fov_n, else: 0
-        pitch_inc = if key_pressed == "I", do: -pitch_n, else: 0
-        pitch_dec = if key_pressed == "K", do: pitch_n, else: 0
-        yaw_inc = if key_pressed == "J", do: yaw_n, else: 0
-        yaw_dec = if key_pressed == "L", do: -yaw_n, else: 0
-        roll_inc = if key_pressed == "U", do: roll_n, else: 0
-        roll_dec = if key_pressed == "O", do: -roll_n, else: 0
-
-        offsets = {
-          x + left + right,
-          y + up + down,
-          z + backward + forward
-        }
-        fov_offset = state.params.fov_offset + fov_inc + fov_dec
-        pitch = state.params.pitch + pitch_inc + pitch_dec
-        yaw = state.params.yaw + yaw_inc + yaw_dec
-        roll = state.params.roll + roll_inc + roll_dec
-        params = %{
-          offsets: offsets,
-          fov_offset: fov_offset,
-          pitch: pitch,
-          yaw: yaw,
-          roll: roll
-        }
-
-        graph = draw(state.width, state.height, params)
-
-        new_state = %{
-          graph: graph,
-          params: params,
-          width: state.width,
-          height: state.height
-        }
-
-        {:noreply, new_state, push: graph}
-      _ ->
-        {:noreply, state}
-    end
-  end
-
   def draw(width, height, params) do
     # objects in the scene
     hit_list = [
       %{
+        # left
         type: :sphere,
-        params: {vec3(-0.5, 0, -1), 0.5},
+        params: {vec3(-1, 0, -1), 0.5},
+        # material: material_default(colour(0.8, 0, 0))
+        material: material_dielectric(1.5)
+      },
+      %{
+        # center
+        type: :sphere,
+        params: {vec3(0, 0, -1), 0.5},
+        # material: material_default(colour(0, 0.8, 0))
+        material: material_dielectric(1.5)
+      },
+      %{
+        # right
+        type: :sphere,
+        params: {vec3(1, 0, -1), 0.5},
         material: material_metal(colour(0.8, 0.6, 0.2), 1)
       },
       %{
-        type: :sphere,
-        params: {vec3(0.5, 0, -1), 0.5},
-        material: material_metal(colour(0.7, 0.7, 0.7))
-      },
-      %{
-        type: :sphere,
-        params: {vec3(0, 0.5, -1), 0.5},
-        material: material_metal(colour(0.7, 0.7, 0.7))
-      },
-      %{
+        # ground
         type: :sphere,
         params: {vec3(0, -100.5, -1), 100},
         material: material_default(colour(0.8, 0.8, 0))
-      },
+      }
     ]
 
-    pixel_n = 100 # number of pixels horizontally/vertically, ie resolution
+    pixel_n = 200 # number of pixels horizontally/vertically, ie resolution
 
     three_d = false
 
     aspect_ratio = width / height
-    # this would change based on aspect ratio
     viewport_height = 2
     viewport_width = if three_d, do: aspect_ratio * viewport_height / 2 , else: aspect_ratio * viewport_height
     focal_length = 1 + params.fov_offset
@@ -167,7 +114,7 @@ defmodule Raytracer.Scene.Home do
       {x} when x<0 ->
         graph
       {_} ->
-        samples = 5
+        samples = 20
 
         pixel_colour = sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, samples)
         |> colour
@@ -211,7 +158,7 @@ defmodule Raytracer.Scene.Home do
         v = (j + :rand.uniform) / (height/pixel_sz)
 
         r = camera_get_ray(camera, u, v)
-        pixel_colour = ray_colour(r, hit_list, 5)
+        pixel_colour = ray_colour(r, hit_list, 50)
         |> vec_add(colour)
 
         sample_pixel(camera, i, j, width, height, pixel_sz, hit_list, pixel_colour, samples-1)
@@ -319,6 +266,41 @@ defmodule Raytracer.Scene.Home do
       n |> vec_mul(2 * dot(v, n))
     )
   end
+  def refract(uv, n, etai_over_etat) do
+    cos_theta = uv
+    |> vec_mul(-1)
+    |> dot(n)
+    |> min(1)
+
+    r_out_perp = n
+    |> vec_mul(cos_theta)
+    |> vec_add(uv)
+    |> vec_mul(etai_over_etat)
+
+    r_out_parallel = n
+    |> vec_mul(
+      -:math.sqrt(
+        abs(
+          1 - vec_length_squared(r_out_perp)
+        )
+      )
+    )
+
+    r_out_perp |> vec_add(r_out_parallel)
+  end
+  def refract_alt(v, n, ni, nt) do
+    uv = unit_vector(v)
+    dt = dot(uv, n)
+    ni_o_nt = ni / nt
+    disciminant = 1 - ni_o_nt * ni_o_nt * (1 - dt * dt)
+
+    if disciminant > 0 do
+      refracted = ni_o_nt * (vec_sub(uv, vec_mul(n, dt))) - n * :math.sqrt(disciminant)
+      {true, refracted}
+    else
+      {false}
+    end
+  end
 
 
   ###############################
@@ -358,7 +340,6 @@ defmodule Raytracer.Scene.Home do
   def material_metal() do
     material_metal(vec3(0, 0, 0), 0)
   end
-
   def material_metal(attenuation) do
     material_metal(attenuation, 0)
   end
@@ -381,6 +362,23 @@ defmodule Raytracer.Scene.Home do
     }
   end
 
+  def material_dielectric(index_of_refraction) do
+    %{
+      attenuation: colour(1, 1, 1),
+      scatter: fn(ray, rec) ->
+        refraction_ratio = if rec.front_face, do: 1.0/index_of_refraction, else: index_of_refraction
+
+        refracted = ray.direction
+        |> unit_vector()
+        |> refract(
+          rec.normal,
+          refraction_ratio
+        )
+
+        {true, ray(rec.p, refracted)}
+      end
+    }
+  end
 
   ###############################
   #
@@ -468,9 +466,10 @@ defmodule Raytracer.Scene.Home do
     front_face = ray.direction |> dot(outward_normal)
 
     if front_face < 0 do
-      outward_normal
+      {outward_normal, true}
     else
-      outward_normal |> vec_mul(-1)
+      # Logger.info("DOES THIS HAPPEN")
+      {outward_normal |> vec_mul(-1), false}
     end
   end
 
@@ -487,31 +486,37 @@ defmodule Raytracer.Scene.Home do
     if disciminant < 0 do
       {:miss}
     else
-
       # find the nearest root that lies in the acceptable range
       sqrtd = :math.sqrt(disciminant)
-      root = (-half_b - sqrtd) / a
-
-      # todo, there must be a way to not have ugly nested ifs
+      root_1 = (-half_b - sqrtd) / a
       root_2 = (-half_b + sqrtd) / a
 
-      if (root < t_min or root > t_max) and
-        (root_2 < t_min || t_max < root_2) do
-          {:miss}
+      root = if root_1 < t_min || t_max < root_1 do
+        if root_2 < t_min || t_max < root_2 do
+          nil
+        else
+          root_2
+        end
+      else
+        root_1
+      end
+
+      if root == nil do
+        {:miss}
       else
         t = root
         p = ray |> ray_at(t)
-        normal = p
+        {normal, front_face} = p
         |> vec_sub(center)
         |> vec_div(radius)
         |> set_face_normal(ray)
-
 
         hit_record = %{
           t: t,
           p: p,
           normal: normal,
-          material: object.material
+          material: object.material,
+          front_face: front_face
         }
 
         {:hit, hit_record}
@@ -566,4 +571,66 @@ defmodule Raytracer.Scene.Home do
     end
   end
 
+
+  ###############################
+  #
+  # Events
+
+  def handle_input(event, _context, state) do
+    offset_n = 0.1
+    fov_n = 0.1
+    pitch_n = 0.5
+    yaw_n = 0.5
+    roll_n = 0.5
+
+    case event do
+      {:key, {key_pressed, :press, _}} ->
+        {x, y, z} = state.params.offsets
+
+        left = if key_pressed == "left", do: -offset_n, else: 0
+        right = if key_pressed == "right", do: offset_n, else: 0
+        forward = if key_pressed == "up", do: -offset_n, else: 0
+        backward = if key_pressed == "down", do: offset_n, else: 0
+        up = if key_pressed == "[", do: offset_n, else: 0
+        down = if key_pressed == "]", do: -offset_n, else: 0
+        fov_inc = if key_pressed == "=", do: fov_n, else: 0
+        fov_dec = if key_pressed == "-", do: -fov_n, else: 0
+        pitch_inc = if key_pressed == "I", do: -pitch_n, else: 0
+        pitch_dec = if key_pressed == "K", do: pitch_n, else: 0
+        yaw_inc = if key_pressed == "J", do: yaw_n, else: 0
+        yaw_dec = if key_pressed == "L", do: -yaw_n, else: 0
+        roll_inc = if key_pressed == "U", do: roll_n, else: 0
+        roll_dec = if key_pressed == "O", do: -roll_n, else: 0
+
+        offsets = {
+          x + left + right,
+          y + up + down,
+          z + backward + forward
+        }
+        fov_offset = state.params.fov_offset + fov_inc + fov_dec
+        pitch = state.params.pitch + pitch_inc + pitch_dec
+        yaw = state.params.yaw + yaw_inc + yaw_dec
+        roll = state.params.roll + roll_inc + roll_dec
+        params = %{
+          offsets: offsets,
+          fov_offset: fov_offset,
+          pitch: pitch,
+          yaw: yaw,
+          roll: roll
+        }
+
+        graph = draw(state.width, state.height, params)
+
+        new_state = %{
+          graph: graph,
+          params: params,
+          width: state.width,
+          height: state.height
+        }
+
+        {:noreply, new_state, push: graph}
+      _ ->
+        {:noreply, state}
+    end
+  end
 end
