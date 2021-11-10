@@ -44,11 +44,16 @@ defmodule Raytracer.Scene.Home do
         material: material_dielectric(1.5)
       },
       %{
+        # left
+        type: :sphere,
+        params: {vec3(-1, 0, -1), 0.4},
+        material: material_dielectric(1.5)
+      },
+      %{
         # center
         type: :sphere,
         params: {vec3(0, 0, -1), 0.5},
-        # material: material_default(colour(0, 0.8, 0))
-        material: material_dielectric(1.5)
+        material: material_default(colour(0.1, 0.2, 0.5))
       },
       %{
         # right
@@ -288,6 +293,11 @@ defmodule Raytracer.Scene.Home do
 
     r_out_perp |> vec_add(r_out_parallel)
   end
+  def reflectance(cosine, ref_idx) do
+    r0 = (1 - ref_idx) / (1 + ref_idx)
+    r0_sq = r0*r0
+    r0 + (1 - r0) * :math.pow(1 - cosine, 5)
+  end
 
 
   ###############################
@@ -353,7 +363,11 @@ defmodule Raytracer.Scene.Home do
     %{
       attenuation: colour(1, 1, 1),
       scatter: fn(ray, rec) ->
-        refraction_ratio = if rec.front_face, do: 1.0/index_of_refraction, else: index_of_refraction
+        refraction_ratio = if rec.front_face do
+          1.0 / index_of_refraction
+        else
+          index_of_refraction
+        end
 
         unit_direction = ray.direction |> unit_vector()
 
@@ -366,7 +380,7 @@ defmodule Raytracer.Scene.Home do
 
         cannot_refract = refraction_ratio * sin_theta > 1
 
-        direction = if cannot_refract do
+        direction = if cannot_refract || reflectance(cos_theta, refraction_ratio) > :random.uniform() do
           reflect(unit_direction, rec.normal)
         else
           refract(unit_direction, rec.normal, refraction_ratio)
