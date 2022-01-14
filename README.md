@@ -7,3 +7,5 @@ An exercise in learning raytracing and Elixir. Requires [Scenic](https://hexdocs
 ```
 mix do deps.get, scenic.run
 ```
+
+![This is what this project will produce](render.png)
